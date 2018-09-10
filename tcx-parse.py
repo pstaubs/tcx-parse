@@ -7,12 +7,10 @@ import xml.etree.ElementTree
 from datetime import datetime, timedelta
 import yaml
 #Packages
+import utm
 import matplotlib.pyplot as plt
 from PIL import Image
-import numpy as np
 from prettytable import PrettyTable
-#Internal
-import include.conversion as utm
 
 ###############################################################################
 ## Settings
@@ -25,9 +23,8 @@ namespace = {'schema': 'http://www.garmin.com/xmlschemas/TrainingCenterDatabase/
 ## Library
 ###############################################################################
 class ActivityType():
-    def __init__(self, name, lookupName):
+    def __init__(self, name):
         self.name       = name
-        self.lookupName = lookupName
 
     def bindActivities(self, listOfActivities):
         indeces = []
@@ -115,8 +112,8 @@ def main():
         try:
             with open('tcx_parse.yml', 'r') as stream:
                 config = yaml.load(stream)
-        except yaml.YAMLError as exc:
-            with open('tcx_parse.yml', 'r') as stream:
+        except:
+            with open('tcx_parse.yml', 'w') as stream:
                 config = {'regions':
                             {'Global':
                                 {'lat1': -180.0,
@@ -130,7 +127,7 @@ def main():
                          }
                 yaml.dump(config, stream, default_flow_style=False, allow_unicode=True)
 
-        regions = {label: Region('label', latLim=[config['regions'][label]['lat1'], config['regions'][label]['lat2']], longLim=[config['regions'][label]['long1'], config['regions'][label]['long2']], plot=config['regions'][label]['plot']) for label in config['regions']}
+        regions = {label: Region(label, latLim=[config['regions'][label]['lat1'], config['regions'][label]['lat2']], longLim=[config['regions'][label]['long1'], config['regions'][label]['long2']], plot=config['regions'][label]['plot']) for label in config['regions']}
         activityTypes = {label: ActivityType(label) for label in config['activityTypes']}
 
 
@@ -168,14 +165,16 @@ def main():
             monthly_statistics[activity.getStartTime().year][activity.getStartTime().month-1] += 1
 
         if(datetime.now().year in monthly_statistics):
-            t = PrettyTable([datetime(2000,x,1).strftime("%B") for x in range(1,13)])
+            t = PrettyTable()
+            t.title = 'Activities this year'
+            t.field_names = [datetime(2000,x,1).strftime("%B") for x in range(1,13)]
             t.add_row([str(x) for x in monthly_statistics[datetime.now().year]])
-            print('  Activities this year:')
             print(t)
 
-        t = PrettyTable([datetime(2000,x,1).strftime("%B") for x in range(1,13)])
+        t = PrettyTable()
+        t.title = 'Activities all time'
+        t.field_names = [datetime(2000,x,1).strftime("%B") for x in range(1,13)]
         t.add_row([str(sum([monthly_statistics[year][month] for year in monthly_statistics])) for month in range(12)])
-        print('  Activities all time:')
         print(t)
 
         fig = plt.figure('Activities by month')
@@ -185,23 +184,26 @@ def main():
         ax.set_xticklabels([datetime(2000,x,1).strftime("%B") for x in range(1,13)])
         plt.show()
 
+
         #########################
         ## Activities by region
         #########################
         ## Prepare and dump region statistics
-        print('===============')
         for region_name in regions:
             regions[region_name].bindActivities(activities)
 
-            print('Printing stats for region: '+regions[region_name].name)
-            print('    Number:     '+str(len(regions[region_name].activities)))
-            print('    Distance:   '+str(round(sum([activity.getDistance() for activity in regions[region_name].activities])/1000.0,1))+' km')
-            try:    print('    Avg. speed:  '+str(round(sum([activity.getDistance() for activity in regions[region_name].activities])/sum([activity.getDuration().seconds for activity in regions[region_name].activities])*3.6, 1))+' km/h')
-            except: print('    Avg. speed:  - km/h')
-            print('    Calories:   '+str(sum([activity.getCalories() for activity in regions[region_name].activities])))
-            print('    Total time: '+str(round(sum([activity.getDuration().seconds for activity in regions[region_name].activities])/3600.0, 2))+' h')
-            try:    print('    Avg. time:  '+str(round(sum([activity.getDuration().seconds for activity in regions[region_name].activities])/60.0/float(len(regions[region_name].activities)), 1))+' min')
-            except: print('    Avg. time:  - min')
+            t = PrettyTable()
+            t.title = 'Stats for region: '+regions[region_name].name
+            t.field_names = ['','']
+            t.add_row(['Number:',str(len(regions[region_name].activities))])
+            t.add_row(['Distance:',str(round(sum([activity.getDistance() for activity in regions[region_name].activities])/1000.0,1))+' km'])
+            try:    t.add_row(['Avg. speed:',str(round(sum([activity.getDistance() for activity in regions[region_name].activities])/sum([activity.getDuration().seconds for activity in regions[region_name].activities])*3.6, 1))+' km/h'])
+            except: t.add_row(['Avg. speed:','- km/h'])
+            t.add_row(['Calories:',str(sum([activity.getCalories() for activity in regions[region_name].activities]))])
+            t.add_row(['Total time:',str(round(sum([activity.getDuration().seconds for activity in regions[region_name].activities])/3600.0, 2))+' h'])
+            try:    t.add_row(['Avg. time:',str(round(sum([activity.getDuration().seconds for activity in regions[region_name].activities])/60.0/float(len(regions[region_name].activities)), 1))+' min'])
+            except: t.add_row(['Avg. time:','- min'])
+            print(t)
 
             if(regions[region_name].plot):
                 print('    Preparing map for region: '+regions[region_name].name)
@@ -214,25 +216,26 @@ def main():
                 plt.axis('equal')
                 plt.show()
 
-            print('---------------')
 
-        ## Prepare and dump activity statistics
-        print('===============')
+        #########################
+        ## Activities by type
+        #########################
         for activity_name in activityTypes:
             activityTypes[activity_name].bindActivities(activities)
 
-            print('Printing stats for activity: '+activityTypes[activity_name].name)
-            print('    Number:     '+str(len(activityTypes[activity_name].activities)))
-            print('    Distance:   '+str(round(sum([activity.getDistance() for activity in activityTypes[activity_name].activities])/1000.0,1))+' km')
-            try:    print('    Avg. speed:  '+str(round(sum([activity.getDistance() for activity in activityTypes[activity_name].activities])/sum([activity.getDuration().seconds for activity in activityTypes[activity_name].activities])*3.6, 1))+' km/h')
-            except: print('    Avg. speed:  - km/h')
-            print('    Calories:   '+str(sum([activity.getCalories() for activity in activityTypes[activity_name].activities])))
-            print('    Total time: '+str(round(sum([activity.getDuration().seconds for activity in activityTypes[activity_name].activities])/3600.0, 2))+' h')
-            try:    print('    Avg. time:  '+str(round(sum([activity.getDuration().seconds for activity in activityTypes[activity_name].activities])/60.0/float(len(activityTypes[activity_name].activities)), 1))+' min')
-            except: print('    Avg. time:  - min')
-            print('---------------')
+            t = PrettyTable()
+            t.title = 'Stats for activity: '+activityTypes[activity_name].name
+            t.field_names = ['','']
+            t.add_row(['Number:',str(len(activityTypes[activity_name].activities))])
+            t.add_row(['Distance:',str(round(sum([activity.getDistance() for activity in activityTypes[activity_name].activities])/1000.0,1))+' km'])
+            try:    t.add_row(['Avg. speed:',str(round(sum([activity.getDistance() for activity in activityTypes[activity_name].activities])/sum([activity.getDuration().seconds for activity in activityTypes[activity_name].activities])*3.6, 1))+' km/h'])
+            except: t.add_row(['Avg. speed:','- km/h'])
+            t.add_row(['Calories:',str(sum([activity.getCalories() for activity in activityTypes[activity_name].activities]))])
+            t.add_row(['Total time:',str(round(sum([activity.getDuration().seconds for activity in activityTypes[activity_name].activities])/3600.0, 2))+' h'])
+            try:    t.add_row(['Avg. time:',str(round(sum([activity.getDuration().seconds for activity in activityTypes[activity_name].activities])/60.0/float(len(activityTypes[activity_name].activities)), 1))+' min'])
+            except: t.add_row(['Avg. time:','- min'])
+            print(t)
 
-        ##import pdb; pdb.set_trace()
 
     ###################
     # Error and exit handling
