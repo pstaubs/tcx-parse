@@ -3,96 +3,20 @@
 ## Dependancies
 #Native
 import os, logging, argparse
-import xml.etree.ElementTree
-from datetime import datetime, timedelta
+from datetime import datetime
 import yaml
 #Packages
-import utm
 import matplotlib.pyplot as plt
-from PIL import Image
 from prettytable import PrettyTable
+#Internal
+import lib.tools
 
 ###############################################################################
 ## Settings
 ###############################################################################
 path = 'data'
 linewidth = 1
-namespace = {'schema': 'http://www.garmin.com/xmlschemas/TrainingCenterDatabase/v2'}
-
-###############################################################################
-## Library
-###############################################################################
-class ActivityType():
-    def __init__(self, name):
-        self.name       = name
-
-    def bindActivities(self, listOfActivities):
-        indeces = []
-        for i in range(len(listOfActivities)):
-            if(listOfActivities[i].getActivityType() == self.lookupName and len(listOfActivities[i].getPositionsLat()) > 0):
-                indeces.append(i)
-
-        self.activities = [listOfActivities[ix] for ix in indeces]
-        return True
-
-class Region():
-    def __init__(self, name, latLim, longLim, plot=False):
-        self.name    = name
-        self.latLim  = latLim
-        self.longLim = longLim
-        self.plot    = plot
-
-    def bindActivities(self, listOfActivities):
-        indeces = []
-        for i in range(len(listOfActivities)):
-            lat_ = listOfActivities[i].getPositionsLat()
-            long_ = listOfActivities[i].getPositionsLong()
-            if(len(lat_) > 0 and lat_[0] > self.latLim[0] and lat_[0] < self.latLim[1] and long_[0] > self.longLim[0] and long_[0] < self.longLim[1]):
-                indeces.append(i)
-
-        self.activities = [listOfActivities[ix] for ix in indeces]
-        return True
-
-class Map():
-    def __init__(self, filename, originLat, originLong, scale, region):
-        self.filename   = filename
-        self.originLat  = originLat
-        self.originLong = originLong
-        self.scale      = scale          ## px/m
-        self.region     = region
-        self.load()
-
-    def load(self):
-        self.img = Image.open(self.filename)
-        self.img = self.img.resize((int(self.img.size[0]/self.scale),int(self.img.size[1]/self.scale)), Image.ANTIALIAS)
-
-    def plot(self):
-        x,y,_,_ = utm.from_latlon(self.originLat,self.originLong)
-        plt.imshow(self.img, extent=[x,x+self.img.size[0],y,y+self.img.size[1]], interpolation='bicubic')
-
-class Activity():
-    def __init__(self, filename):
-        self.filename = filename
-        self.importXML()
-
-    def getActivity(self):      return self.data.find('schema:Activities', namespace).find('schema:Activity', namespace)
-    def getActivityType(self):  return self.getActivity().attrib['Sport']
-    def getCalories(self):      return int(self.getActivity().find('schema:Lap', namespace).find('schema:Calories', namespace).text)
-    def getStartTime(self):     return datetime.strptime(self.getActivity().find('schema:Lap', namespace).attrib['StartTime'], '%Y-%m-%dT%H:%M:%S.000Z')
-    def getDuration(self):      return timedelta(seconds=int(self.getActivity().find('schema:Lap', namespace).find('schema:TotalTimeSeconds', namespace).text))
-    def getEndTime(self):       return self.getStartTime() + self.getDuration()
-    def getDistance(self):      return int(self.getActivity().find('schema:Lap', namespace).find('schema:DistanceMeters', namespace).text) # In metres
-
-    def getPositions(self):     return self.getActivity().find('schema:Lap', namespace).find('schema:Track', namespace).findall('schema:Trackpoint', namespace)
-    def getPositionsLat(self):  return [float(pos.find('schema:Position', namespace).find('schema:LatitudeDegrees', namespace).text) for pos in self.getPositions()]
-    def getPositionsLong(self): return [float(pos.find('schema:Position', namespace).find('schema:LongitudeDegrees', namespace).text) for pos in self.getPositions()]
-    def getPositionsAlt(self):  return [float(pos.find('schema:AltitudeMeters', namespace).text) for pos in self.getPositions()]
-    def getPositionsUTMX(self): return [utm.from_latlon(lat,long)[0] for lat,long in zip(self.getPositionsLat(),self.getPositionsLong())]
-    def getPositionsUTMY(self): return [utm.from_latlon(lat,long)[1] for lat,long in zip(self.getPositionsLat(),self.getPositionsLong())]
-
-    def importXML(self):
-        self.data = xml.etree.ElementTree.parse(self.filename).getroot()
-
+results_folder = 'output'
 
 ###############################################################################
 ## Core
@@ -123,12 +47,12 @@ def main():
                                  'plot':  False
                                 }
                             },
-                          'activityTypes': ['running', 'cycling', 'cross country skiing', 'ice skating']
+                          'activityTypes': ['running', 'cycling', 'cross country skiing', 'ice skating', 'paddle boating']
                          }
                 yaml.dump(config, stream, default_flow_style=False, allow_unicode=True)
 
-        regions = {label: Region(label, latLim=[config['regions'][label]['lat1'], config['regions'][label]['lat2']], longLim=[config['regions'][label]['long1'], config['regions'][label]['long2']], plot=config['regions'][label]['plot']) for label in config['regions']}
-        activityTypes = {label: ActivityType(label) for label in config['activityTypes']}
+        regions = {label: lib.tools.Region(label, latLim=[config['regions'][label]['lat1'], config['regions'][label]['lat2']], longLim=[config['regions'][label]['long1'], config['regions'][label]['long2']], plot=config['regions'][label]['plot']) for label in config['regions']}
+        activityTypes = {label: lib.tools.ActivityType(label) for label in config['activityTypes']}
 
 
         #########################
@@ -143,17 +67,20 @@ def main():
                 for filename in files:
                     if(os.path.splitext(filename)[1].lower() == '.tcx'): count+=1
             if(count < 1):        print('    No activities found.')
-            elif(count < 100):    print('    '+str(count)+' activities found. parsing may take several seconds...')
-            elif(count < 1000):   print('    '+str(count)+' activities found. parsing may take several minutes...')
-            elif(count < 10000):  print('    '+str(count)+' activities found. parsing may take up to an hour...')
-            elif(count < 100000): print('    '+str(count)+' activities found. parsing may take several hours...')
+            elif(count < 100):    print('    '+str(count)+' activities found. Parsing may take several seconds...')
+            elif(count < 1000):   print('    '+str(count)+' activities found. Parsing may take several minutes...')
+            elif(count < 10000):  print('    '+str(count)+' activities found. Parsing may take up to an hour...')
+            elif(count < 100000): print('    '+str(count)+' activities found. Parsing may take several hours...')
 
         ## Load activities into memory
         activities = []
         for root, dirs, files in os.walk(path):
             for filename in files:
                 if(len(activities) > count): break
-                if(os.path.splitext(filename)[1].lower() == '.tcx'): activities.append(Activity(os.path.join(path,filename)))
+                if(os.path.splitext(filename)[1].lower() == '.tcx'):
+                    activity = lib.tools.Activity(os.path.join(path,filename))
+                    if(activity.getActivityType().lower().replace('_',' ') not in config['activityTypes']): continue
+                    activities.append(activity)
 
 
         #########################
@@ -182,8 +109,9 @@ def main():
         ax = plt.gca()
         ax.set_xticks(range(12))
         ax.set_xticklabels([datetime(2000,x,1).strftime("%B") for x in range(1,13)])
-        plt.show()
-
+        if(not os.path.exists(results_folder)): os.mkdir(results_folder)
+        fig.savefig(os.path.join(results_folder,'monthly.png'))
+        plt.close()
 
         #########################
         ## Activities by region
@@ -194,7 +122,7 @@ def main():
 
             t = PrettyTable()
             t.title = 'Stats for region: '+regions[region_name].name
-            t.field_names = ['','']
+            t.field_names = ['Stat','Value']
             t.add_row(['Number:',str(len(regions[region_name].activities))])
             t.add_row(['Distance:',str(round(sum([activity.getDistance() for activity in regions[region_name].activities])/1000.0,1))+' km'])
             try:    t.add_row(['Avg. speed:',str(round(sum([activity.getDistance() for activity in regions[region_name].activities])/sum([activity.getDuration().seconds for activity in regions[region_name].activities])*3.6, 1))+' km/h'])
@@ -210,10 +138,11 @@ def main():
                 fig = plt.figure(regions[region_name].name)
                 #for mapName in bitmapMaps:
                 #    if(bitmapMaps[mapName].region == region_name): bitmapMaps[mapName].plot()
-
                 for activity in regions[region_name].activities:
-                    plt.plot(activity.getPositionsUTMX(), activity.getPositionsUTMY(), 'b', linewidth=linewidth)
+                    activity.plot, = plt.plot(activity.getPositionsUTMX(), activity.getPositionsUTMY(), color='C0', linewidth=linewidth)
+                activeElements = lib.tools.Persistant()
                 plt.axis('equal')
+                fig.canvas.mpl_connect('button_press_event', lambda event: lib.tools.mapClickCallback(event, fig, regions[region_name].activities, activeElements, linewidth))
                 plt.show()
 
 
@@ -225,7 +154,7 @@ def main():
 
             t = PrettyTable()
             t.title = 'Stats for activity: '+activityTypes[activity_name].name
-            t.field_names = ['','']
+            t.field_names = ['Stat','Value']
             t.add_row(['Number:',str(len(activityTypes[activity_name].activities))])
             t.add_row(['Distance:',str(round(sum([activity.getDistance() for activity in activityTypes[activity_name].activities])/1000.0,1))+' km'])
             try:    t.add_row(['Avg. speed:',str(round(sum([activity.getDistance() for activity in activityTypes[activity_name].activities])/sum([activity.getDuration().seconds for activity in activityTypes[activity_name].activities])*3.6, 1))+' km/h'])
