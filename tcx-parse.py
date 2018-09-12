@@ -78,7 +78,11 @@ def main():
             for filename in files:
                 if(len(activities) > count): break
                 if(os.path.splitext(filename)[1].lower() == '.tcx'):
-                    activity = lib.tools.Activity(os.path.join(path,filename))
+                    activity = lib.tools.ActivityTCX(os.path.join(path,filename))
+                    if(activity.getActivityType().lower().replace('_',' ') not in config['activityTypes']): continue
+                    activities.append(activity)
+                if(os.path.splitext(filename)[1].lower() == '.gpx'):
+                    activity = lib.tools.ActivityGPX(os.path.join(path,filename))
                     if(activity.getActivityType().lower().replace('_',' ') not in config['activityTypes']): continue
                     activities.append(activity)
 
@@ -143,6 +147,7 @@ def main():
                 activeElements = lib.tools.Persistant()
                 plt.axis('equal')
                 fig.canvas.mpl_connect('button_press_event', lambda event: lib.tools.mapClickCallback(event, fig, regions[region_name].activities, activeElements, linewidth))
+                fig.canvas.mpl_connect('scroll_event', lambda event: lib.tools.mapZoom(event, fig))
                 plt.show()
 
 

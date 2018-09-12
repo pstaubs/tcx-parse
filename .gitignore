@@ -1,5 +1,6 @@
 *.png
 *.tcx
+*.gpx
 *.pyc
 *.url
 *.yml
