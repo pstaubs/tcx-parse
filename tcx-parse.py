@@ -1,6 +1,8 @@
 #!/usr/bin/env python
 
-## Dependancies
+##################
+# Dependancies
+##################
 #Native
 import os, logging, argparse
 from datetime import datetime
@@ -10,6 +12,7 @@ import matplotlib.pyplot as plt
 from prettytable import PrettyTable
 #Internal
 import lib.tools
+import lib.interface
 
 ###############################################################################
 ## Settings
@@ -137,18 +140,21 @@ def main():
             except: t.add_row(['Avg. time:','- min'])
             print(t)
 
-            if(regions[region_name].plot):
-                print('    Preparing map for region: '+regions[region_name].name)
-                fig = plt.figure(regions[region_name].name)
-                #for mapName in bitmapMaps:
-                #    if(bitmapMaps[mapName].region == region_name): bitmapMaps[mapName].plot()
-                for activity in regions[region_name].activities:
-                    activity.plot, = plt.plot(activity.getPositionsUTMX(), activity.getPositionsUTMY(), color='C0', linewidth=linewidth)
-                activeElements = lib.tools.Persistant()
-                plt.axis('equal')
-                fig.canvas.mpl_connect('button_press_event', lambda event: lib.tools.mapClickCallback(event, fig, regions[region_name].activities, activeElements, linewidth))
-                fig.canvas.mpl_connect('scroll_event', lambda event: lib.tools.mapZoom(event, fig))
-                plt.show()
+        if([True for label in regions if regions[label].plot]):
+            print('    Preparing map interface...')
+            lib.interface.Interface(regions, linewidth=linewidth)
+
+            '''
+            fig = plt.figure(regions[region_name].name)
+            #for mapName in bitmapMaps:
+            #    if(bitmapMaps[mapName].region == region_name): bitmapMaps[mapName].plot()
+            for activity in regions[region_name].activities:
+                activity.plot, = plt.plot(activity.getPositionsUTMX(), activity.getPositionsUTMY(), color='C0', linewidth=linewidth)
+            activeElements = lib.tools.Persistant()
+            plt.axis('equal')
+            fig.canvas.mpl_connect('button_press_event', lambda event: lib.tools.mapClickCallback(event, fig, regions[region_name].activities, activeElements, linewidth))
+            fig.canvas.mpl_connect('scroll_event', lambda event: lib.tools.mapZoom(event, fig))
+            plt.show()'''
 
 
         #########################
